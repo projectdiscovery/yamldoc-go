@@ -43,6 +43,28 @@ name: 443-httpx-internet-wide
 
 <div class="dd">
 
+<code>key</code>  <i>string</i>
+
+</div>
+<div class="dt">
+
+Key contains a key input of a certain type
+
+
+Valid values:
+
+
+  - <code>dns</code>
+
+  - <code>http</code>
+
+  - <code>headless</code>
+</div>
+
+<hr />
+
+<div class="dd">
+
 <code>description</code>  <i>string</i>
 
 </div>
@@ -82,8 +104,8 @@ Examples:
 ``` yaml
 providers:
     apollo-digitalocean:
-        access-token: 1sBKK4cEjmqxzgAfWzu8cvGKXJN
-        api-key: 1sBKK5V6qYdwm245f7DelXtsOxf
+        access-token: 1sBKi2VGbAaifbg6NDvAdcyp8Uo
+        api-key: 1sBKhzvzQJc9TKwic4vFiQO61FH
 ```
 
 

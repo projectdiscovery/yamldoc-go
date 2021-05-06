@@ -17,7 +17,7 @@ func init() {
 	JobDoc.Type = "Job"
 	JobDoc.Comments[encoder.LineComment] = "Job is a single job to be executed by apollo."
 	JobDoc.Description = "Job is a single job to be executed by apollo.\n\nA job contains providers and deployments required to be done\nand some steps to be taken to achieve a desired scan.\n\nA job is just an input and is immutable. The state of a job\nis maintained in other variables instead of the Job struct.\n"
-	JobDoc.Fields = make([]encoder.Doc, 4)
+	JobDoc.Fields = make([]encoder.Doc, 5)
 	JobDoc.Fields[0].Name = "name"
 	JobDoc.Fields[0].Type = "string"
 	JobDoc.Fields[0].Note = ""
@@ -25,27 +25,37 @@ func init() {
 	JobDoc.Fields[0].Comments[encoder.LineComment] = "Name of the Job"
 
 	JobDoc.Fields[0].AddExample("Name Example", "443-httpx-internet-wide")
-	JobDoc.Fields[1].Name = "description"
+	JobDoc.Fields[1].Name = "key"
 	JobDoc.Fields[1].Type = "string"
 	JobDoc.Fields[1].Note = ""
-	JobDoc.Fields[1].Description = "Description contains a description of the job"
-	JobDoc.Fields[1].Comments[encoder.LineComment] = "Description contains a description of the job"
-
-	JobDoc.Fields[1].AddExample("Description Example", "Runs masscan on port 443 followed by httpx")
-	JobDoc.Fields[2].Name = "providers"
-	JobDoc.Fields[2].Type = "map[string]map[string]string"
+	JobDoc.Fields[1].Description = "Key contains a key input of a certain type"
+	JobDoc.Fields[1].Comments[encoder.LineComment] = "Key contains a key input of a certain type"
+	JobDoc.Fields[1].Values = []string{
+		"dns",
+		"http",
+		"headless",
+	}
+	JobDoc.Fields[2].Name = "description"
+	JobDoc.Fields[2].Type = "string"
 	JobDoc.Fields[2].Note = ""
-	JobDoc.Fields[2].Description = "Providers contains a list of infrastructure providers\nfor the current scan."
-	JobDoc.Fields[2].Comments[encoder.LineComment] = "Providers contains a list of infrastructure providers"
+	JobDoc.Fields[2].Description = "Description contains a description of the job"
+	JobDoc.Fields[2].Comments[encoder.LineComment] = "Description contains a description of the job"
 
-	JobDoc.Fields[2].AddExample("Providers Example", exampleProvider)
-	JobDoc.Fields[3].Name = "internal-options"
-	JobDoc.Fields[3].Type = "InternalOptions"
+	JobDoc.Fields[2].AddExample("Description Example", "Runs masscan on port 443 followed by httpx")
+	JobDoc.Fields[3].Name = "providers"
+	JobDoc.Fields[3].Type = "map[string]map[string]string"
 	JobDoc.Fields[3].Note = ""
-	JobDoc.Fields[3].Description = "InternalOptions contains internal configuration options for scheduler"
-	JobDoc.Fields[3].Comments[encoder.LineComment] = "InternalOptions contains internal configuration options for scheduler"
+	JobDoc.Fields[3].Description = "Providers contains a list of infrastructure providers\nfor the current scan."
+	JobDoc.Fields[3].Comments[encoder.LineComment] = "Providers contains a list of infrastructure providers"
 
-	JobDoc.Fields[3].AddExample("InternalOptions Example", exampleInternalOptions)
+	JobDoc.Fields[3].AddExample("Providers Example", exampleProvider)
+	JobDoc.Fields[4].Name = "internal-options"
+	JobDoc.Fields[4].Type = "InternalOptions"
+	JobDoc.Fields[4].Note = ""
+	JobDoc.Fields[4].Description = "InternalOptions contains internal configuration options for scheduler"
+	JobDoc.Fields[4].Comments[encoder.LineComment] = "InternalOptions contains internal configuration options for scheduler"
+
+	JobDoc.Fields[4].AddExample("InternalOptions Example", exampleInternalOptions)
 
 	InternalOptionsDoc.Type = "InternalOptions"
 	InternalOptionsDoc.Comments[encoder.LineComment] = "InternalOptions contains internal configuration options for scheduler"

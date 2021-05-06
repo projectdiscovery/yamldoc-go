@@ -34,6 +34,13 @@ type Job struct {
 	//     value: "\"443-httpx-internet-wide\""
 	Name string `yaml:"name" json:"name"`
 	// description: |
+	//   Key contains a key input of a certain type
+	// values:
+	//   - "dns"
+	//   - "http"
+	//   - "headless"
+	Key string `yaml:"key"`
+	// description: |
 	//   Description contains a description of the job
 	// examples:
 	//   - name: Description Example
