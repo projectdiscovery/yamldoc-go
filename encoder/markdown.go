@@ -21,7 +21,7 @@ var markdownTemplate = `
 Examples:
 
 {{ range $example := .Examples }}
-{{ yaml $example.GetValue $.Name }}
+{{ yaml $example.GetValue $example.Name }}
 {{ end }}
 {{ end }}
 
