@@ -282,9 +282,10 @@ func formatFieldType(p interface{}) string {
 		return formatFieldType(t.X)
 	case *ast.SelectorExpr:
 		return formatFieldType(t.Sel)
+	case *ast.InterfaceType:
+		return "interface{}"
 	default:
 		log.Printf("unknown: %#v", t)
-
 		return ""
 	}
 }
@@ -316,6 +317,9 @@ func collectFields(s *structType) (fields []*Field) {
 			continue
 		}
 
+		if len(f.Names) == 0 {
+			continue
+		}
 		name := f.Names[0].Name
 
 		fieldType := formatFieldType(f.Type)
