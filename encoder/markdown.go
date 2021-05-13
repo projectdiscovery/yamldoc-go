@@ -21,7 +21,7 @@ var markdownTemplate = `
 Examples:
 
 {{ range $example := .Examples }}
-{{ yaml $example.GetValue $example.GetName }}
+{{ yaml $example.GetValue $.Name }}
 {{ end }}
 {{ end }}
 
@@ -43,7 +43,7 @@ Appears in:
 {{ if $struct.Examples -}}
 
 {{ range $example := $struct.Examples }}
-{{ yaml $example.GetValue $example.GetName }}
+{{ yaml $example.GetValue $.Name }}
 {{- end -}}
 {{ end }}
 
@@ -179,10 +179,9 @@ func (fd *FileDoc) encodeType(t string) string {
 }
 
 func encodeYaml(in interface{}, name string) string {
+	var yamlPrefix string
 	if name != "" {
-		in = map[string]interface{}{
-			name: in,
-		}
+		yamlPrefix = fmt.Sprintf("# %s\n", name)
 	}
 
 	node, err := toYamlNode(in, CommentsAll)
@@ -200,7 +199,7 @@ func encodeYaml(in interface{}, name string) string {
 		lines[i] = strings.TrimRight(line, " ")
 	}
 
-	return fmt.Sprintf("``` yaml\n%s```", strings.Join(lines, "\n"))
+	return fmt.Sprintf("```yaml\n%s%s```", yamlPrefix, strings.Join(lines, "\n"))
 }
 
 func formatLink(text, link string) string {
