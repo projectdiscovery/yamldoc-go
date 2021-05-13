@@ -43,7 +43,7 @@ Appears in:
 {{ if $struct.Examples -}}
 
 {{ range $example := $struct.Examples }}
-{{ yaml $example.GetValue $.Name }}
+{{ yaml $example.GetValue $example.Name }}
 {{- end -}}
 {{ end }}
 
