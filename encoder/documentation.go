@@ -114,6 +114,11 @@ func (e *Example) GetValue() interface{} {
 	return e.value
 }
 
+// GetName returns the name of the example
+func (e *Example) GetName() string {
+	return e.Name
+}
+
 // Field gets field from the list of fields.
 func (d *Doc) Field(i int) *Doc {
 	if i < len(d.Fields) {
