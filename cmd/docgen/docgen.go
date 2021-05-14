@@ -304,6 +304,13 @@ func collectFields(s *structType) (fields []*Field) {
 	fields = []*Field{}
 
 	for _, f := range s.node.Fields.List {
+		if f.Tag == nil {
+			if f.Names == nil {
+				// This is an embedded struct.
+				continue
+			}
+		}
+
 		if f.Doc == nil {
 			log.Fatalf("field %q is missing a documentation", f.Names[0].Name)
 		}

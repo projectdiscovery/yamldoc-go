@@ -43,7 +43,7 @@ Appears in:
 {{ if $struct.Examples -}}
 
 {{ range $example := $struct.Examples }}
-{{ yaml $example.GetValue $.Name $example.GetName }}
+{{ yaml $example.GetValue "" $example.GetName }}
 {{- end -}}
 {{ end }}
 
@@ -179,14 +179,14 @@ func (fd *FileDoc) encodeType(t string) string {
 }
 
 func encodeYaml(in interface{}, name string, description string) string {
-	var yamlPrefix string
-	if description != "" {
-		yamlPrefix = fmt.Sprintf("# %s\n", description)
-	}
 	if name != "" {
 		in = map[string]interface{}{
 			name: in,
 		}
+	}
+	var yamlPrefix string
+	if description != "" {
+		yamlPrefix = fmt.Sprintf("# %s\n", description)
 	}
 
 	node, err := toYamlNode(in, CommentsAll)
