@@ -5,7 +5,6 @@
 package encoder
 
 import (
-	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -296,7 +295,6 @@ func toYamlNode(in interface{}, flags CommentsFlags) (*yaml.Node, error) {
 		for i := 0; i < v.Len(); i++ {
 			element := v.Index(i)
 
-			fmt.Printf("v: %+v element: %+v\n", v, element.String())
 			var err error
 
 			nodes[i], err = toYamlNode(element.Interface(), flags)
