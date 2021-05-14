@@ -2,6 +2,12 @@
 
 A standalone version of the YAML Code Documentation approach described at https://www.talos-systems.com/blog/documentation-as-code/. All credits goes to original authors.
 
+
+### Changes
+
+- Added support for example name based comments
+- Fixed a panic with embedded structs and added support for them.
+  
 ### Usage
 
 The general recommendation is, all the structures for a single type should be in a single file.

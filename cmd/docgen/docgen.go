@@ -130,6 +130,8 @@ type Field struct {
 	Text    *Text
 	Tag     string
 	Note    string
+
+	embeddedStruct string
 }
 
 type Text struct {
@@ -302,13 +304,6 @@ func collectFields(s *structType) (fields []*Field) {
 	fields = []*Field{}
 
 	for _, f := range s.node.Fields.List {
-		if f.Tag == nil {
-			if f.Names == nil {
-				// This is an embedded struct.
-				continue
-			}
-		}
-
 		if f.Doc == nil {
 			log.Fatalf("field %q is missing a documentation", f.Names[0].Name)
 		}
@@ -318,6 +313,24 @@ func collectFields(s *structType) (fields []*Field) {
 		}
 
 		if len(f.Names) == 0 {
+			gotStruct, ok := f.Type.(*ast.Ident)
+			if !ok {
+				continue
+			}
+			typeSpec, ok := gotStruct.Obj.Decl.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+			structData := typeSpec.Type.(*ast.StructType)
+			if !ok {
+				continue
+			}
+			log.Printf("got embedded struct: %+v\n", structData)
+
+			embeddedFields := collectFields(&structType{node: structData})
+			for _, field := range embeddedFields {
+				fields = append(fields, field)
+			}
 			continue
 		}
 		name := f.Names[0].Name
