@@ -7,13 +7,13 @@ package main
 
 import (
 	"bytes"
+	"container/list"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
-	"sync"
 	"text/template"
 	"unicode"
 
@@ -111,6 +111,17 @@ type Struct struct {
 	AppearsIn []Appearance
 }
 
+// GetName returns the name of the struct. If a package name is provided, it
+// is returned as well.
+func (s *Struct) GetName() string {
+
+}
+
+// GetEscapedName returns the GetName result in escaped form for templating
+func (s *Struct) GetEscapedName() string {
+
+}
+
 type Appearance struct {
 	Struct    *Struct
 	FieldName string
@@ -179,37 +190,9 @@ func collectStructs(node dst.Node, structName string, pkg *decorator.Package) []
 		}
 
 		for _, spec := range g.Specs {
-			t, ok := spec.(*dst.TypeSpec)
-			if !ok {
-				return true
+			if parsed := parseStructureFromDSTSpec(n, spec, structName, pkg); parsed != nil {
+				structs = append(structs, parsed)
 			}
-
-			if t.Type == nil {
-				return true
-			}
-
-			x, ok := t.Type.(*dst.StructType)
-			if !ok {
-				return true
-			}
-
-			gotStructName := t.Name.Name
-			if structName != gotStructName {
-				return true
-			}
-			if !unicode.IsUpper(rune(structName[0])) {
-				return true
-			}
-
-			s := &structType{
-				name: gotStructName,
-				node: x,
-				text: parseComment([]byte(uncommentDecorationNode(n))),
-				pkg:  pkg,
-			}
-			s.fields = collectFields(s)
-
-			structs = append(structs, s)
 		}
 		return true
 	}
@@ -217,8 +200,44 @@ func collectStructs(node dst.Node, structName string, pkg *decorator.Package) []
 	return structs
 }
 
+func parseStructureFromDSTSpec(node dst.Node, spec dst.Spec, structName string, pkg *decorator.Package) *structType {
+	t, ok := spec.(*dst.TypeSpec)
+	if !ok {
+		return nil
+	}
+
+	if t.Type == nil {
+		return nil
+	}
+
+	x, ok := t.Type.(*dst.StructType)
+	if !ok {
+		return nil
+	}
+
+	gotStructName := t.Name.Name
+	if structName != gotStructName {
+		return nil
+	}
+
+	// Check if we have a package other than root, and add package name as prefix
+	// to the struct name.
+
+	if !unicode.IsUpper(rune(structName[0])) {
+		return nil
+	}
+
+	s := &structType{
+		name: gotStructName,
+		node: x,
+		text: parseComment([]byte(uncommentDecorationNode(node))),
+		pkg:  pkg,
+	}
+	s.fields = collectFields(s)
+	return s
+}
+
 func parseComment(comment []byte) *Text {
-	fmt.Printf("comment: %s\n", string(comment))
 	text := &Text{}
 	if err := yaml.Unmarshal(comment, text); err != nil {
 		// not yaml, fallback
@@ -288,56 +307,84 @@ func formatFieldType(p interface{}) string {
 	}
 }
 
-var unresolvedStructMap = new(sync.Map)
+var unresolvedStructTracker = newReferenceTracker()
+
+type referenceTracker struct {
+	dll     *list.List
+	dupeMap map[string]struct{}
+}
+
+func newReferenceTracker() *referenceTracker {
+	return &referenceTracker{dll: list.New()}
+}
+
+func (s *referenceTracker) Push(ref *unresolveStructReference) {
+	s.dll.PushBack(ref)
+}
+
+func (s *referenceTracker) Pop() *unresolveStructReference {
+	if s.dll.Len() == 0 {
+		return nil
+	}
+	tail := s.dll.Back()
+	val := tail.Value
+	s.dll.Remove(tail)
+	return val.(*unresolveStructReference)
+}
 
 type unresolveStructReference struct {
-	path       string
-	structName string
-	dstPackage *decorator.Package
+	path           string
+	structName     string
+	finalStructure *structType
+	dstPackage     *decorator.Package
 }
 
 // addUnresolvedStructToCollection adds an unresolved struct to collection
 // The collection is kept deduplicated based on the key parts provided.
 func addUnresolvedStructToCollection(ref *unresolveStructReference) {
-	builder := &strings.Builder{}
-	builder.WriteString(ref.path)
-	builder.WriteString(ref.structName)
-	finalPath := builder.String()
-
-	unresolvedStructMap.LoadOrStore(finalPath, ref)
+	unresolvedStructTracker.Push(ref)
 }
 
 // resolveUnresolveStructReferences performs resolving of unresolved structures
 func resolveUnresolveStructReferences() []*structType {
 	var finalStructs []*structType
 
-	unresolvedStructMap.Range(func(key, value interface{}) bool {
-		unresolvedRef, ok := value.(*unresolveStructReference)
-		if !ok {
-			return true
+	for {
+		value := unresolvedStructTracker.Pop()
+		if value == nil {
+			break
 		}
-		structPackage, ok := unresolvedRef.dstPackage.Imports[unresolvedRef.path]
-		if !ok {
-			log.Printf("[debug] [ref] no package found for struct %s: %s\n", unresolvedRef.structName, unresolvedRef.path)
-			return true
+		if value.finalStructure != nil {
+			finalStructs = append(finalStructs, value.finalStructure)
+			continue
 		}
-		finalStructs = append(finalStructs, collectStructsFromPackage(structPackage, unresolvedRef.structName)...)
-		return true
-	})
+		structPackage, ok := value.dstPackage.Imports[value.path]
+		if !ok {
+			log.Printf("[debug] [ref] no package found for struct %s: %s\n", value.structName, value.path)
+			continue
+		}
+		finalStructs = append(finalStructs, collectStructsFromPackage(structPackage, value.structName)...)
+	}
 	return finalStructs
 }
 
 func collectUnresolvedExternalStructs(p interface{}, pkg *decorator.Package) {
 	if m, ok := p.(*dst.MapType); ok {
-		collectUnresolvedExternalStructs(m.Key.(*dst.Ident), pkg)
-		collectUnresolvedExternalStructs(m.Value.(*dst.Ident), pkg)
+		collectUnresolvedExternalStructs(m.Key.(dst.Expr), pkg)
+		collectUnresolvedExternalStructs(m.Value.(dst.Expr), pkg)
 		return
 	}
 
 	switch t := p.(type) {
 	case *dst.Ident:
 		if t.Obj != nil { // in case of arrays of objects
-			log.Printf("ident-obj: %#v", t.Obj)
+			spec := t.Obj.Decl.(*dst.TypeSpec)
+			collectedStruct := parseStructureFromDSTSpec(spec, spec, t.Obj.Name, pkg)
+			addUnresolvedStructToCollection(&unresolveStructReference{
+				structName:     t.Name,
+				dstPackage:     pkg,
+				finalStructure: collectedStruct,
+			})
 		}
 		if t.Path != "" {
 			addUnresolvedStructToCollection(&unresolveStructReference{
@@ -346,8 +393,6 @@ func collectUnresolvedExternalStructs(p interface{}, pkg *decorator.Package) {
 				dstPackage: pkg,
 			})
 		}
-		log.Printf("ident: %#v", t)
-		//		return t.Name
 	case *dst.ArrayType:
 		collectUnresolvedExternalStructs(t.Elt, pkg)
 	case *dst.StructType:
@@ -359,7 +404,6 @@ func collectUnresolvedExternalStructs(p interface{}, pkg *decorator.Package) {
 		collectUnresolvedExternalStructs(t.Sel, pkg)
 	default:
 	}
-	//unresolvedStructMap.LoadOrStore()
 }
 
 // uncommentDecorationNode uncomments comments for a dst node.
@@ -390,15 +434,21 @@ func collectFields(s *structType) (fields []*Field) {
 
 	for _, f := range s.node.Fields.List {
 		if f.Tag == nil {
-			if f.Names == nil {
-				// This is an embedded struct.
-				continue
-			}
+			continue
 		}
+		tag := reflect.StructTag(strings.Trim(f.Tag.Value, "`"))
+		yamlTag := tag.Get("yaml")
+		yamlTag = strings.Split(yamlTag, ",")[0]
+
+		if yamlTag == "" || yamlTag == "-" {
+			continue
+		}
+		yamlTag = strings.ToLower(yamlTag)
 
 		documentation := uncommentDecorationNode(f)
 		if documentation == "" {
-			log.Fatalf("field %q is missing a documentation", f.Names[0].Name)
+			log.Printf("field %q is missing a documentation", f.Names[0].Name)
+			continue
 		}
 		if strings.Contains(documentation, "docgen:nodoc") {
 			continue
@@ -431,14 +481,6 @@ func collectFields(s *structType) (fields []*Field) {
 		fieldTypeRef := getFieldType(f.Type)
 
 		collectUnresolvedExternalStructs(f.Type, s.pkg)
-		tag := reflect.StructTag(strings.Trim(f.Tag.Value, "`"))
-		yamlTag := tag.Get("yaml")
-		yamlTag = strings.Split(yamlTag, ",")[0]
-
-		if yamlTag == "" {
-			continue
-		}
-		yamlTag = strings.ToLower(yamlTag)
 
 		field := &Field{
 			Name:    name,
@@ -515,8 +557,9 @@ func main() {
 		fmt.Printf("generating docs for type: %q\n", s.name)
 
 		newStruct := &Struct{
-			Name: s.name,
-			Text: s.text,
+			Name:   s.name,
+			Text:   s.text,
+			Fields: s.fields,
 		}
 
 		for _, field := range s.fields {
