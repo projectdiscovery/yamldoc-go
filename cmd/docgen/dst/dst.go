@@ -304,7 +304,6 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 
 	for _, f := range s.node.Fields.List {
 		if f.Tag == nil {
-			fmt.Printf("field skip: %+v\n", f)
 			continue
 		}
 		tag := reflect.StructTag(strings.Trim(f.Tag.Value, "`"))
@@ -326,8 +325,31 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 		}
 
 		if len(f.Names) == 0 {
-			// TODO: Handle embedded structs
-			log.Printf("got embedded struct: %+v\n", f /*structData*/)
+			starExpr, ok := f.Type.(*dst.StarExpr)
+			if !ok {
+				continue
+			}
+			ident, ok := starExpr.X.(*dst.Ident)
+			if !ok {
+				continue
+			}
+			if ident.Obj == nil {
+				continue
+			}
+			spec, ok := ident.Obj.Decl.(*dst.TypeSpec)
+			if !ok {
+				continue
+			}
+			log.Printf("got embedded struct: %T %T\n", spec, starExpr.X)
+			for _, structure := range parseStructuresFromDSTSpec(spec, spec, &collectStructOptions{
+				pkg:           collectOpts.pkg,
+				structName:    spec.Name.Name,
+				packagePrefix: collectOpts.packagePrefix,
+			}) {
+				for _, field := range structure.fields {
+					fields = append(fields, field)
+				}
+			}
 			continue
 		}
 		name := f.Names[0].Name
