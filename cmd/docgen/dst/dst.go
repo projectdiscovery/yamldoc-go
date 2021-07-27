@@ -303,14 +303,14 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 	var foundStructures []*structType
 
 	for _, f := range s.node.Fields.List {
-		if f.Tag == nil {
+		if f.Tag == nil && len(f.Names) > 0 {
 			continue
 		}
 		tag := reflect.StructTag(strings.Trim(f.Tag.Value, "`"))
-		yamlTag := tag.Get("yaml")
-		yamlTag = strings.Split(yamlTag, ",")[0]
+		yamlTags := tag.Get("yaml")
+		yamlTag := strings.Split(yamlTags, ",")[0]
 
-		if yamlTag == "" || yamlTag == "-" {
+		if (yamlTag == "" || yamlTag == "-") && strings.Count(yamlTags, ",") <= 1 {
 			continue
 		}
 		yamlTag = strings.ToLower(yamlTag)
@@ -325,27 +325,30 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 		}
 
 		if len(f.Names) == 0 {
-			starExpr, ok := f.Type.(*dst.StarExpr)
+			//starExpr, ok := f.Type.(*dst.StarExpr)
+			//if !ok {
+			//	continue
+			//}
+			ident, ok := f.Type.(*dst.Ident)
 			if !ok {
 				continue
 			}
-			ident, ok := starExpr.X.(*dst.Ident)
+			log.Printf("got embedded struct: %v\n", ident.Path)
+
+			structPackage, ok := collectOpts.pkg.Imports[ident.Path]
 			if !ok {
-				continue
+				log.Printf("[debug] [ref] no package found for struct %s: %s\n", collectOpts.structName, ident.Path)
+				return
 			}
-			if ident.Obj == nil {
-				continue
-			}
-			spec, ok := ident.Obj.Decl.(*dst.TypeSpec)
-			if !ok {
-				continue
-			}
-			log.Printf("got embedded struct: %T %T\n", spec, starExpr.X)
-			for _, structure := range parseStructuresFromDSTSpec(spec, spec, &collectStructOptions{
-				pkg:           collectOpts.pkg,
-				structName:    spec.Name.Name,
-				packagePrefix: collectOpts.packagePrefix,
-			}) {
+
+			structures := collectStructsWithOpts(&collectStructOptions{
+				pkg:           structPackage,
+				structName:    ident.Name,
+				packagePrefix: path.Base(ident.Path),
+			})
+
+			fmt.Printf("got embedded field: %v\n", structures)
+			for _, structure := range structures {
 				for _, field := range structure.fields {
 					fields = append(fields, field)
 				}
@@ -449,7 +452,7 @@ func uncommentDecorationNode(node dst.Node) string {
 
 	commentBuilder := &strings.Builder{}
 	for i, part := range parts {
-		commentBuilder.WriteString(strings.TrimPrefix(part, "// "))
+		commentBuilder.WriteString(strings.TrimPrefix(part, "//"))
 		if i != len(parts)-1 {
 			commentBuilder.WriteString("\n")
 		}
