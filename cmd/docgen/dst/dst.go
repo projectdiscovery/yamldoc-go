@@ -43,7 +43,7 @@ type Doc struct {
 }
 
 type Struct struct {
-	Name          string
+	name          string
 	packagePrefix string
 
 	Text      *Text
@@ -54,18 +54,15 @@ type Struct struct {
 // GetName returns the name of the struct. If a package name is provided, it
 // is returned as well.
 func (s *Struct) GetName() string {
-	if s.packagePrefix == "" {
-		return s.Name
-	}
-	return strings.Join([]string{s.packagePrefix, s.Name}, ".")
+	return wrapStructName(s.packagePrefix, s.name)
 }
 
 // GetEscapedName returns the GetName result in escaped form for templating
 func (s *Struct) GetEscapedName() string {
 	if s.packagePrefix == "" {
-		return s.Name
+		return s.name
 	}
-	return strings.Join([]string{strings.ToUpper(s.packagePrefix), s.Name}, "")
+	return strings.Join([]string{strings.ToUpper(s.packagePrefix), s.name}, "")
 }
 
 type Appearance struct {
@@ -136,11 +133,13 @@ func process() error {
 	extraExamples := map[string][]*Example{}
 	backReferences := map[string][]Appearance{}
 
-	for _, s := range structures {
+	for i := len(structures) - 1; i >= 0; i-- {
+		s := structures[i]
+
 		fmt.Printf("generating docs for type: %q\n", s.name)
 
 		newStruct := &Struct{
-			Name:          s.name,
+			name:          s.name,
 			packagePrefix: s.packagePrefix,
 			Text:          s.text,
 			Fields:        s.fields,
@@ -164,18 +163,17 @@ func process() error {
 	}
 
 	for _, s := range doc.Structs {
-		if extra, ok := extraExamples[s.Name]; ok {
+		if extra, ok := extraExamples[s.GetName()]; ok {
 			s.Text.Examples = append(s.Text.Examples, extra...)
 		}
 
-		if ref, ok := backReferences[s.Name]; ok {
+		if ref, ok := backReferences[s.GetName()]; ok {
 			s.AppearsIn = append(s.AppearsIn, ref...)
 		}
 	}
 	if err := render(doc, *output); err != nil {
 		return errors.Wrap(err, "could not render")
 	}
-
 	return nil
 }
 
@@ -208,6 +206,13 @@ type structType struct {
 	text          *Text
 	fields        []*Field
 	packagePrefix string
+}
+
+func wrapStructName(prefix, suffix string) string {
+	if prefix == "" {
+		return suffix
+	}
+	return strings.Join([]string{prefix, suffix}, ".")
 }
 
 // collectStructsWithOpts collects a structure from a package based on the
@@ -299,6 +304,7 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 
 	for _, f := range s.node.Fields.List {
 		if f.Tag == nil {
+			fmt.Printf("field skip: %+v\n", f)
 			continue
 		}
 		tag := reflect.StructTag(strings.Trim(f.Tag.Value, "`"))
@@ -329,8 +335,8 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 		if !unicode.IsUpper(rune(name[0])) {
 			continue
 		}
-		fieldType := formatFieldType(f.Type)
-		fieldTypeRef := getFieldType(f.Type)
+		fieldType := formatFieldType(f.Type, s.packagePrefix, false)
+		fieldTypeRef := getFieldType(f.Type, s.packagePrefix, false)
 
 		collectUnresolvedExternalStructs(f.Type, &foundStructures, collectOpts)
 
@@ -389,20 +395,26 @@ func collectUnresolvedExternalStructs(p interface{}, results *[]*structType, col
 	}
 }
 
-func getFieldType(p interface{}) string {
+func getFieldType(p interface{}, prefix string, apply bool) string {
 	if m, ok := p.(*dst.MapType); ok {
-		return getFieldType(m.Value)
+		return getFieldType(m.Value, prefix, false)
 	}
 
 	switch t := p.(type) {
 	case *dst.Ident:
+		if t.Path != "" {
+			return wrapStructName(path.Base(t.Path), t.Name) // If we have a path
+		}
+		if apply && prefix != "" {
+			return wrapStructName(prefix, t.Name)
+		}
 		return t.Name
 	case *dst.ArrayType:
-		return getFieldType(p.(*dst.ArrayType).Elt)
+		return getFieldType(p.(*dst.ArrayType).Elt, prefix, false)
 	case *dst.StarExpr:
-		return getFieldType(t.X)
+		return getFieldType(t.X, prefix, true)
 	case *dst.SelectorExpr:
-		return getFieldType(t.Sel)
+		return getFieldType(t.Sel, prefix, false)
 	default:
 		return ""
 	}
@@ -424,22 +436,28 @@ func uncommentDecorationNode(node dst.Node) string {
 }
 
 // formatFieldType returns the type of field for a structure
-func formatFieldType(p interface{}) string {
+func formatFieldType(p interface{}, prefix string, apply bool) string {
 	if m, ok := p.(*dst.MapType); ok {
-		return fmt.Sprintf("map[%s]%s", formatFieldType(m.Key), formatFieldType(m.Value))
+		return fmt.Sprintf("map[%s]%s", formatFieldType(m.Key, prefix, false), formatFieldType(m.Value, prefix, false))
 	}
 
 	switch t := p.(type) {
 	case *dst.Ident:
+		if t.Path != "" {
+			return wrapStructName(path.Base(t.Path), t.Name) // If we have a path
+		}
+		if apply && prefix != "" {
+			return wrapStructName(prefix, t.Name)
+		}
 		return t.Name
 	case *dst.ArrayType:
-		return "[]" + formatFieldType(p.(*dst.ArrayType).Elt)
+		return "[]" + formatFieldType(p.(*dst.ArrayType).Elt, prefix, false)
 	case *dst.StructType:
 		return "struct"
 	case *dst.StarExpr:
-		return formatFieldType(t.X)
+		return formatFieldType(t.X, prefix, true)
 	case *dst.SelectorExpr:
-		return formatFieldType(t.Sel)
+		return formatFieldType(t.Sel, prefix, false)
 	case *dst.InterfaceType:
 		return "interface{}"
 	default:
@@ -512,7 +530,7 @@ func init() {
 	{{ $docVar }}.AppearsIn = []encoder.Appearance{
 	{{ range $value := $struct.AppearsIn -}}
 		{
-			TypeName: "{{ $value.Struct.Name }}",
+			TypeName: "{{ $value.Struct.GetName }}",
 			FieldName: "{{ $value.FieldName }}",
 		},
 	{{ end -}}
