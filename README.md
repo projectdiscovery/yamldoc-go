@@ -7,6 +7,7 @@ A standalone version of the YAML Code Documentation approach described at https:
 
 - Added support for example name based comments
 - Fixed a panic with embedded structs and added support for them.
+- Complete rewrite of docgen using [dst](https://github.com/dave/dst) to support multi-package structure organization.
   
 ### Usage
 
