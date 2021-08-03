@@ -287,9 +287,11 @@ func parseStructuresFromDSTSpec(node dst.Node, spec dst.Spec, collectOpts *colle
 	}
 
 	gotStructName := t.Name.Name
+	// We only want structures with name as described
 	if !strings.EqualFold(collectOpts.structName, gotStructName) {
 		return nil, nil
 	}
+	// We only want publicly declrated types
 	if !unicode.IsUpper(rune(gotStructName[0])) {
 		return nil, nil
 	}
@@ -301,6 +303,7 @@ func parseStructuresFromDSTSpec(node dst.Node, spec dst.Spec, collectOpts *colle
 		pkg:           collectOpts.pkg,
 		packagePrefix: collectOpts.packagePrefix,
 	}
+	// Collect all the fields of the structure. The
 	fields, structures := collectFields(s, collectOpts)
 	s.fields = fields
 	return s, structures
@@ -308,6 +311,9 @@ func parseStructuresFromDSTSpec(node dst.Node, spec dst.Spec, collectOpts *colle
 
 // collectFields collects all the fields from a structure, as well
 // as collecting any nested structures based on their types.
+//
+// Embedded structures are also handled by the collectFields functions,
+// with all their types getting added to the structure fields.
 func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*Field, structs []*structType) {
 	fields = []*Field{}
 
@@ -363,6 +369,9 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 					packagePrefix: collectOpts.packagePrefix,
 				})
 			}
+			// Append all the fields of embedded structure to the
+			// parent structure and add any additional found structures
+			// to the finalStructures array.
 			for _, field := range structure.fields {
 				fields = append(fields, field)
 			}
@@ -371,12 +380,14 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 		}
 		name := f.Names[0].Name
 
+		// Public fields only
 		if !unicode.IsUpper(rune(name[0])) {
 			continue
 		}
 		fieldType := formatFieldType(f.Type, s.packagePrefix, false)
 		fieldTypeRef := getFieldType(f.Type, s.packagePrefix, false)
 
+		// Collect any unresolved reference to a remote object.
 		collectUnresolvedExternalStructs(f.Type, &foundStructures, collectOpts)
 
 		field := &Field{
@@ -395,6 +406,12 @@ var uniqueStructures = make(map[string]struct{})
 
 // collectUnresolvedExternalStructs collects unresolved external structures
 // for a package into the list.
+//
+// In this process, the field's type is checked and based
+// on the parent data structure, it is collected from a remote
+// package.
+//
+// It also handles deduplication by having a uniqueStructures map.
 func collectUnresolvedExternalStructs(p interface{}, results *[]*structType, collectOpts *collectStructOptions) {
 	if m, ok := p.(*dst.MapType); ok {
 		collectUnresolvedExternalStructs(m.Key.(dst.Expr), results, collectOpts)
@@ -450,6 +467,8 @@ func collectUnresolvedExternalStructs(p interface{}, results *[]*structType, col
 	}
 }
 
+// getFieldType returns the full name of a field, with the prefix
+// applied if the field is from a remote package.
 func getFieldType(p interface{}, prefix string, apply bool) string {
 	if m, ok := p.(*dst.MapType); ok {
 		return getFieldType(m.Value, prefix, false)
@@ -490,7 +509,8 @@ func uncommentDecorationNode(node dst.Node) string {
 	return commentBuilder.String()
 }
 
-// formatFieldType returns the type of field for a structure
+// formatFieldType returns the type of field for a structure with the prefix
+// applied if the field is from a remote package.
 func formatFieldType(p interface{}, prefix string, apply bool) string {
 	if m, ok := p.(*dst.MapType); ok {
 		return fmt.Sprintf("map[%s]%s", formatFieldType(m.Key, prefix, false), formatFieldType(m.Value, prefix, false))
@@ -529,6 +549,7 @@ func escape(value string) string {
 	))
 }
 
+// parseComment parses a comment into a Text object
 func parseComment(comment []byte) *Text {
 	text := &Text{}
 	if err := yaml.Unmarshal(comment, text); err != nil {
