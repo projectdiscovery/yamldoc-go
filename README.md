@@ -16,7 +16,7 @@ The general recommendation is, all the structures for a single type should be in
 The following go:generate command will generate docs for a specified file.
 
 ```bash
-//go:generate docgen ./<file>.go ./<file>_doc.go <Name>
+//go:generate dst -path ~/projectdiscovery/nuclei/v2/pkg/templates -structure Template -output output.go
 $ go generate pkg/<path_to_file>.go
 ```
 
