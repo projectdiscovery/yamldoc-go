@@ -113,10 +113,12 @@ func process() error {
 	// trying to find the main structure for which documentation is to be
 	// created.
 	for _, pkg := range pkgs {
-		structures = append(structures, collectStructsWithOpts(&collectStructOptions{
+		main, extra := collectStructsWithOpts(&collectStructOptions{
 			pkg:        pkg,
 			structName: *structure,
-		})...)
+		})
+		structures = append(structures, main)
+		structures = append(structures, extra...)
 	}
 
 	if len(structures) == 0 {
@@ -133,9 +135,7 @@ func process() error {
 	extraExamples := map[string][]*Example{}
 	backReferences := map[string][]Appearance{}
 
-	for i := len(structures) - 1; i >= 0; i-- {
-		s := structures[i]
-
+	for _, s := range structures {
 		fmt.Printf("generating docs for type: %q\n", s.name)
 
 		newStruct := &Struct{
@@ -222,18 +222,28 @@ func wrapStructName(prefix, suffix string) string {
 // The collectStructsWithOpts function is called recursively, performing deep dive
 // into the declared types and collecting all their related information
 // for documentation generation.
-func collectStructsWithOpts(collectOpts *collectStructOptions) []*structType {
-	var structs []*structType
+func collectStructsWithOpts(collectOpts *collectStructOptions) (*structType, []*structType) {
+	var mainStruct *structType
+	var extras []*structType
 
 	for _, spec := range collectOpts.pkg.Syntax {
-		structs = append(structs, collectStructsFromDSTNode(spec, collectOpts)...)
+		parsed, extra := collectStructsFromDSTNode(spec, collectOpts)
+		if parsed != nil {
+			if mainStruct == nil {
+				mainStruct = parsed
+			} else {
+				extras = append(extras, parsed)
+			}
+		}
+		extras = append(extras, extra...)
 	}
-	return structs
+	return mainStruct, extras
 }
 
 //  collectStructsFromDSTNode is a wrapper around parseStructuresFromDSTSpec
-func collectStructsFromDSTNode(node dst.Node, collectOpts *collectStructOptions) []*structType {
-	structs := []*structType{}
+func collectStructsFromDSTNode(node dst.Node, collectOpts *collectStructOptions) (*structType, []*structType) {
+	var mainStruct *structType
+	var extras []*structType
 
 	collectStructs := func(n dst.Node) bool {
 		g, ok := n.(*dst.GenDecl)
@@ -242,43 +252,48 @@ func collectStructsFromDSTNode(node dst.Node, collectOpts *collectStructOptions)
 		}
 
 		for _, spec := range g.Specs {
-			if parsed := parseStructuresFromDSTSpec(n, spec, collectOpts); parsed != nil {
-				structs = append(structs, parsed...)
+			parsed, extra := parseStructuresFromDSTSpec(n, spec, collectOpts)
+			if parsed != nil {
+				if mainStruct == nil {
+					mainStruct = parsed
+				} else {
+					extras = append(extras, parsed)
+				}
 			}
+			extras = append(extras, extra...)
 		}
 		return true
 	}
 	dst.Inspect(node, collectStructs)
-	return structs
+	return mainStruct, extras
 }
 
 // parseStructuresFromDSTSpec parses a structure from a DST specification
 // while also handling all its nested structures, etc returning a list
 // of all collected structures in the end.
-func parseStructuresFromDSTSpec(node dst.Node, spec dst.Spec, collectOpts *collectStructOptions) []*structType {
+func parseStructuresFromDSTSpec(node dst.Node, spec dst.Spec, collectOpts *collectStructOptions) (*structType, []*structType) {
 	t, ok := spec.(*dst.TypeSpec)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	if t.Type == nil {
-		return nil
+		return nil, nil
 	}
 
 	x, ok := t.Type.(*dst.StructType)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	gotStructName := t.Name.Name
 	if !strings.EqualFold(collectOpts.structName, gotStructName) {
-		return nil
+		return nil, nil
 	}
 	if !unicode.IsUpper(rune(gotStructName[0])) {
-		return nil
+		return nil, nil
 	}
 
-	var results []*structType
 	s := &structType{
 		name:          gotStructName,
 		node:          x,
@@ -287,12 +302,8 @@ func parseStructuresFromDSTSpec(node dst.Node, spec dst.Spec, collectOpts *colle
 		packagePrefix: collectOpts.packagePrefix,
 	}
 	fields, structures := collectFields(s, collectOpts)
-	for _, item := range structures {
-		results = append(results, item)
-	}
 	s.fields = fields
-	results = append(results, s)
-	return results
+	return s, structures
 }
 
 // collectFields collects all the fields from a structure, as well
@@ -310,7 +321,7 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 		yamlTags := tag.Get("yaml")
 		yamlTag := strings.Split(yamlTags, ",")[0]
 
-		if (yamlTag == "" || yamlTag == "-") && strings.Count(yamlTags, ",") <= 1 {
+		if (yamlTag == "" || yamlTag == "-") && strings.Count(yamlTags, ",") < 1 {
 			continue
 		}
 		yamlTag = strings.ToLower(yamlTag)
@@ -325,34 +336,37 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 		}
 
 		if len(f.Names) == 0 {
-			//starExpr, ok := f.Type.(*dst.StarExpr)
-			//if !ok {
-			//	continue
-			//}
 			ident, ok := f.Type.(*dst.Ident)
 			if !ok {
 				continue
 			}
-			log.Printf("got embedded struct: %v\n", ident.Path)
 
-			structPackage, ok := collectOpts.pkg.Imports[ident.Path]
-			if !ok {
-				log.Printf("[debug] [ref] no package found for struct %s: %s\n", collectOpts.structName, ident.Path)
-				return
-			}
-
-			structures := collectStructsWithOpts(&collectStructOptions{
-				pkg:           structPackage,
-				structName:    ident.Name,
-				packagePrefix: path.Base(ident.Path),
-			})
-
-			fmt.Printf("got embedded field: %v\n", structures)
-			for _, structure := range structures {
-				for _, field := range structure.fields {
-					fields = append(fields, field)
+			var structure *structType
+			var extra []*structType
+			if ident.Path != "" {
+				structPackage, ok := collectOpts.pkg.Imports[ident.Path]
+				if !ok {
+					log.Printf("[debug] [ref] no package found for struct %s: %s\n", collectOpts.structName, ident.Path)
+					return
 				}
+
+				structure, extra = collectStructsWithOpts(&collectStructOptions{
+					pkg:           structPackage,
+					structName:    ident.Name,
+					packagePrefix: path.Base(ident.Path),
+				})
+			} else if ident.Obj != nil {
+				spec := ident.Obj.Decl.(*dst.TypeSpec)
+				structure, extra = parseStructuresFromDSTSpec(spec, spec, &collectStructOptions{
+					pkg:           collectOpts.pkg,
+					structName:    ident.Name,
+					packagePrefix: collectOpts.packagePrefix,
+				})
 			}
+			for _, field := range structure.fields {
+				fields = append(fields, field)
+			}
+			foundStructures = append(foundStructures, extra...)
 			continue
 		}
 		name := f.Names[0].Name
@@ -377,6 +391,8 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 	return fields, foundStructures
 }
 
+var uniqueStructures = make(map[string]struct{})
+
 // collectUnresolvedExternalStructs collects unresolved external structures
 // for a package into the list.
 func collectUnresolvedExternalStructs(p interface{}, results *[]*structType, collectOpts *collectStructOptions) {
@@ -390,23 +406,37 @@ func collectUnresolvedExternalStructs(p interface{}, results *[]*structType, col
 	case *dst.Ident:
 		if t.Obj != nil { // in case of arrays of objects
 			spec := t.Obj.Decl.(*dst.TypeSpec)
-			*results = append(*results, parseStructuresFromDSTSpec(spec, spec, &collectStructOptions{
+			if _, ok := uniqueStructures[t.Obj.Name]; ok {
+				return
+			}
+			uniqueStructures[t.Obj.Name] = struct{}{}
+
+			main, extra := parseStructuresFromDSTSpec(spec, spec, &collectStructOptions{
 				pkg:           collectOpts.pkg,
 				structName:    t.Name,
 				packagePrefix: collectOpts.packagePrefix,
-			})...)
+			})
+			*results = append(*results, main)
+			*results = append(*results, extra...)
 		}
 		if t.Path != "" {
+			if _, ok := uniqueStructures[t.String()]; ok {
+				return
+			}
+			uniqueStructures[t.String()] = struct{}{}
+
 			structPackage, ok := collectOpts.pkg.Imports[t.Path]
 			if !ok {
 				log.Printf("[debug] [ref] no package found for struct %s: %s\n", collectOpts.structName, t.Path)
 				return
 			}
-			*results = append(*results, collectStructsWithOpts(&collectStructOptions{
+			main, extra := collectStructsWithOpts(&collectStructOptions{
 				pkg:           structPackage,
 				structName:    t.Name,
 				packagePrefix: path.Base(t.Path),
-			})...)
+			})
+			*results = append(*results, main)
+			*results = append(*results, extra...)
 		}
 	case *dst.ArrayType:
 		collectUnresolvedExternalStructs(t.Elt, results, collectOpts)

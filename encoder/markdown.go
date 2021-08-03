@@ -114,7 +114,6 @@ func (fd *FileDoc) Encode() ([]byte, error) {
 	for _, t := range fd.Structs {
 		anchors[t.Type] = strings.ToLower(t.Type)
 	}
-
 	fd.Anchors = anchors
 
 	fd.t = template.Must(template.New("file_markdown.tpl").
@@ -166,15 +165,14 @@ func (fd *FileDoc) Write(path, frontmatter string) error {
 	return nil
 }
 
-func (fd *FileDoc) encodeType(t string) string {
-	re := regexp.MustCompile(`\w+`)
+var re = regexp.MustCompile(`[A-Za-z\.]+`)
 
+func (fd *FileDoc) encodeType(t string) string {
 	for _, s := range re.FindAllString(t, -1) {
 		if anchor, ok := fd.Anchors[s]; ok {
-			t = strings.ReplaceAll(t, s, formatLink(s, "#"+anchor))
+			t = strings.ReplaceAll(t, s, formatLink(s, "#"+strings.ReplaceAll(anchor, ".", "")))
 		}
 	}
-
 	return t
 }
 
