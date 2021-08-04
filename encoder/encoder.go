@@ -174,7 +174,6 @@ func toYamlNode(in interface{}, flags CommentsFlags) (*yaml.Node, error) {
 
 				skip   bool
 				inline bool
-				flow   bool
 			)
 
 			for _, part := range parts {
@@ -188,10 +187,6 @@ func toYamlNode(in interface{}, flags CommentsFlags) (*yaml.Node, error) {
 
 				if part == "inline" {
 					inline = true
-				}
-
-				if part == "flow" {
-					flow = true
 				}
 			}
 
@@ -233,11 +228,7 @@ func toYamlNode(in interface{}, flags CommentsFlags) (*yaml.Node, error) {
 				continue
 			}
 
-			var style yaml.Style
-			if flow {
-				style |= yaml.FlowStyle
-			}
-
+			style := yaml.FlowStyle
 			if inline {
 				child, err := toYamlNode(value, flags)
 				if err != nil {

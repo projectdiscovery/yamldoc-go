@@ -1,3 +1,4 @@
 yamldoc-go
 docgen/docgen
 encoder/encoder
+cmd/docgen/dst/dst
