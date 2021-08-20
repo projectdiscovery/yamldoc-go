@@ -423,10 +423,15 @@ func collectUnresolvedExternalStructs(p interface{}, results *[]*structType, col
 	case *dst.Ident:
 		if t.Obj != nil { // in case of arrays of objects
 			spec := t.Obj.Decl.(*dst.TypeSpec)
-			if _, ok := uniqueStructures[t.Obj.Name]; ok {
+
+			structName := t.Obj.Name
+			if collectOpts.packagePrefix != "" {
+				structName = wrapStructName(collectOpts.packagePrefix, t.Obj.Name)
+			}
+			if _, ok := uniqueStructures[structName]; ok {
 				return
 			}
-			uniqueStructures[t.Obj.Name] = struct{}{}
+			uniqueStructures[structName] = struct{}{}
 
 			main, extra := parseStructuresFromDSTSpec(spec, spec, &collectStructOptions{
 				pkg:           collectOpts.pkg,
@@ -437,6 +442,12 @@ func collectUnresolvedExternalStructs(p interface{}, results *[]*structType, col
 			*results = append(*results, extra...)
 		}
 		if t.Path != "" {
+			prefixSmallName := wrapStructName(path.Base(t.Path), t.Name)
+			if _, ok := uniqueStructures[prefixSmallName]; ok {
+				return
+			}
+			uniqueStructures[prefixSmallName] = struct{}{}
+
 			if _, ok := uniqueStructures[t.String()]; ok {
 				return
 			}
@@ -501,7 +512,11 @@ func uncommentDecorationNode(node dst.Node) string {
 
 	commentBuilder := &strings.Builder{}
 	for i, part := range parts {
-		commentBuilder.WriteString(strings.TrimPrefix(part, "//"))
+		trimmedLine := strings.TrimPrefix(part, "//")
+		if strings.Contains(trimmedLine, "nolint:") {
+			continue
+		}
+		commentBuilder.WriteString(trimmedLine)
 		if i != len(parts)-1 {
 			commentBuilder.WriteString("\n")
 		}
