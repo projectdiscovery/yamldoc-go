@@ -250,38 +250,27 @@ func collectPartEnumInformation(node dst.Node, typeName string) []Example {
 	dst.Inspect(node, func(n dst.Node) bool {
 		g, ok := n.(*dst.GenDecl)
 		if !ok {
-			fmt.Printf("node n %+v is not gendecl\n", n)
 			return true
 		}
 		if g.Tok != token.CONST {
-			fmt.Printf("node g %+v is not const\n", g)
 			return true
 		}
 		value := g.Decs.Start.All()
 		if len(value) == 0 {
-			fmt.Printf("node g %+v is not containing comments\n", g)
 			return true
 		}
 		if strings.TrimPrefix(value[len(value)-1], "// ") != fieldName {
-			fmt.Printf("node g %+v is not fieldname\n", g)
 			return true
 		}
 		for _, s := range g.Specs {
 			value, ok := s.(*dst.ValueSpec)
 			if !ok {
-				fmt.Printf("node s %+v is not valuespec\n", s)
 				continue
 			}
 			if len(value.Names) == 0 {
-				fmt.Printf("node value %+v is no name\n", value)
 				continue
 			}
 			if value.Names[0].Name == "limit" {
-				fmt.Printf("node name %+v is limit\n", value)
-				continue
-			}
-			if len(value.Decs.Start.All()) < 2 {
-				fmt.Printf("node decl %+v is less than two\n", value)
 				continue
 			}
 			valueName := strings.TrimPrefix(value.Decs.Start.All()[len(value.Decs.Start.All())-1], "// name:")
