@@ -85,7 +85,7 @@ type Field struct {
 	Note    string
 
 	embeddedStruct string
-	EnumFields     []Example
+	EnumFields     []string
 }
 
 type Text struct {
@@ -243,13 +243,13 @@ func collectStructsWithOpts(collectOpts *collectStructOptions) (*structType, []*
 }
 
 // collectPartEnumInformation collects enum information for a type from node
-func collectPartEnumInformation(node dst.Node, typeName string) []Example {
+func collectPartEnumInformation(node dst.Node, typeName string) []string {
 	if index := strings.LastIndex(typeName, "."); index != -1 {
 		typeName = typeName[index+1:]
 	}
 	fieldName := strings.Join([]string{"name", typeName}, ":")
 
-	values := []Example{}
+	var values []string
 	dst.Inspect(node, func(n dst.Node) bool {
 		g, ok := n.(*dst.GenDecl)
 		if !ok {
@@ -277,10 +277,7 @@ func collectPartEnumInformation(node dst.Node, typeName string) []Example {
 				continue
 			}
 			valueName := strings.TrimPrefix(value.Decs.Start.All()[len(value.Decs.Start.All())-1], "// name:")
-			values = append(values, Example{
-				Name:  valueName,
-				Value: fmt.Sprintf("%s is a value of type %s", valueName, typeName),
-			})
+			values = append(values, valueName)
 		}
 		return true
 	})
@@ -373,7 +370,7 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 		}
 		tag := reflect.StructTag(strings.Trim(f.Tag.Value, "`"))
 
-		var enumFields []Example
+		var enumFields []string
 
 		documentation := uncommentDecorationNode(f)
 		mapping := tag.Get("mapping")
@@ -505,8 +502,7 @@ func collectUnresolvedExternalStructs(p interface{}, results *[]*structType, col
 				*results = append(*results, main)
 			}
 			*results = append(*results, extra...)
-		}
-		if t.Path != "" {
+		} else if t.Path != "" {
 			prefixSmallName := wrapStructName(path.Base(t.Path), t.Name)
 			if _, ok := uniqueStructures[prefixSmallName]; ok {
 				return
@@ -523,6 +519,7 @@ func collectUnresolvedExternalStructs(p interface{}, results *[]*structType, col
 				log.Printf("[debug] [ref] no package found for struct %s: %s\n", collectOpts.structName, t.Path)
 				return
 			}
+
 			main, extra := collectStructsWithOpts(&collectStructOptions{
 				pkg:           structPackage,
 				structName:    t.Name,
@@ -532,11 +529,24 @@ func collectUnresolvedExternalStructs(p interface{}, results *[]*structType, col
 				*results = append(*results, main)
 			}
 			*results = append(*results, extra...)
+		} else {
+			if _, ok := uniqueStructures[t.Name]; ok {
+				return
+			}
+			uniqueStructures[t.Name] = struct{}{}
+
+			main, extra := collectStructsWithOpts(&collectStructOptions{
+				pkg:        collectOpts.pkg,
+				structName: t.Name,
+			})
+			if main != nil {
+				*results = append(*results, main)
+			}
+			*results = append(*results, extra...)
 		}
 	case *dst.ArrayType:
 		collectUnresolvedExternalStructs(t.Elt, results, collectOpts)
 	case *dst.StructType:
-		//		return "struct"
 	case *dst.StarExpr:
 		collectUnresolvedExternalStructs(t.X, results, collectOpts)
 	case *dst.SelectorExpr:
@@ -701,14 +711,13 @@ func init() {
 	{{ $docVar }}.Fields[{{ $index }}].Note = "{{ $field.Note }}"
 	{{ $docVar }}.Fields[{{ $index }}].Description = "{{ $field.Text.Description }}"
 	{{ $docVar }}.Fields[{{ $index }}].Comments[encoder.LineComment] = "{{ $field.Text.Comment }}"
-	{{ $docVar }}.Fields[{{ $index }}].EnumFields = []encoder.EnumKeyValue{
-		{{ range $value := $field.EnumFields -}}
-		{
-			Key: "{{ $value.Name }}",
-			Description: "{{ $value.Value }}",
-		},
+	{{ if $field.EnumFields -}}
+	{{ $docVar }}.Fields[{{ $index }}].EnumFields = []string{
+	{{ range $value := $field.EnumFields -}}
+		"{{ $value }}",
 	{{ end -}}
 	}
+	{{ end -}}
 	{{ range $example := $field.Text.Examples }}
 	{{ if $example.Value }}
 	{{ $docVar }}.Fields[{{ $index }}].AddExample("{{ $example.Name }}", {{ $example.Value }})

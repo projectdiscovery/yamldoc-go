@@ -73,7 +73,7 @@ Valid values:
 Enum Values:
 
 {{ range $value := $field.EnumFields }}
-  - <code><bold>{{ $value }}</bold>
+  - <code>{{ $value }}</code>
 {{ end -}}
 {{ end -}}
 
