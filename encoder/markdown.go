@@ -69,6 +69,14 @@ Valid values:
 {{ end -}}
 {{ end -}}
 
+{{ if $field.EnumFields }}
+Enum Values:
+
+{{ range $value := $field.EnumFields }}
+  - <code><bold>{{ $value.Key }}</bold> - {{ $value.Description }}</code>
+{{ end -}}
+{{ end -}}
+
 {{- if $field.Note }}
 > {{ $field.Note }}
 {{ end -}}
