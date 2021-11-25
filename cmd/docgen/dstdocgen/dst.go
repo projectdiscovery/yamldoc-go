@@ -244,6 +244,9 @@ func collectStructsWithOpts(collectOpts *collectStructOptions) (*structType, []*
 
 // collectPartEnumInformation collects enum information for a type from node
 func collectPartEnumInformation(node dst.Node, typeName string) []Example {
+	if index := strings.LastIndex(typeName, "."); index != -1 {
+		typeName = typeName[index+1:]
+	}
 	fieldName := strings.Join([]string{"name", typeName}, ":")
 
 	values := []Example{}
@@ -447,9 +450,7 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 		fieldTypeRef := getFieldType(f.Type, s.packagePrefix, false)
 
 		// Collect any unresolved reference to a remote object.
-		if len(enumFields) == 0 {
-			collectUnresolvedExternalStructs(f.Type, &foundStructures, collectOpts)
-		}
+		collectUnresolvedExternalStructs(f.Type, &foundStructures, collectOpts)
 
 		field := &Field{
 			Name:       name,
