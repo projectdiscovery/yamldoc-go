@@ -43,13 +43,7 @@ type Doc struct {
 	// AppearsIn describes back references for the type.
 	AppearsIn []Appearance
 
-	EnumFields []EnumKeyValue
-}
-
-// EnumKeyValue contains key and values for the doc item field
-type EnumKeyValue struct {
-	Key         string
-	Description string
+	EnumFields []string
 }
 
 // AddExample adds a new example snippet to the doc.
