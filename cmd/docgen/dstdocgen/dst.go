@@ -444,6 +444,9 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 			continue
 		}
 		fieldType := formatFieldType(f.Type, s.packagePrefix, false)
+		if name == "" {
+			name = fieldType
+		}
 		fieldTypeRef := getFieldType(f.Type, s.packagePrefix, false)
 
 		// Collect any unresolved reference to a remote object.
