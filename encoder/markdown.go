@@ -47,6 +47,14 @@ Appears in:
 {{- end -}}
 {{ end }}
 
+{{ if $struct.PartDefinitions -}}
+Part Definitions: 
+
+{{ range $value := $struct.PartDefinitions }}
+- <code>{{ $value.Key }}</code> - {{ $value.Value }}
+{{- end -}}
+{{ end }}
+
 {{ if $struct.Fields -}}
 
 <hr />
@@ -76,6 +84,7 @@ Enum Values:
   - <code>{{ $value }}</code>
 {{ end -}}
 {{ end -}}
+
 
 {{- if $field.Note }}
 > {{ $field.Note }}

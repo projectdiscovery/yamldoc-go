@@ -47,9 +47,10 @@ type Struct struct {
 	name          string
 	packagePrefix string
 
-	Text      *Text
-	Fields    []*Field
-	AppearsIn []Appearance
+	Text       *Text
+	Fields     []*Field
+	AppearsIn  []Appearance
+	PartValues []Example
 }
 
 // GetName returns the name of the struct. If a package name is provided, it
@@ -144,6 +145,7 @@ func process() error {
 			packagePrefix: s.packagePrefix,
 			Text:          s.text,
 			Fields:        s.fields,
+			PartValues:    s.requestPartValues,
 		}
 
 		for _, field := range s.fields {
@@ -201,13 +203,14 @@ type collectStructOptions struct {
 }
 
 type structType struct {
-	node          *dst.StructType
-	original      dst.Node
-	pkg           *decorator.Package
-	name          string
-	text          *Text
-	fields        []*Field
-	packagePrefix string
+	node              *dst.StructType
+	original          dst.Node
+	pkg               *decorator.Package
+	name              string
+	text              *Text
+	fields            []*Field
+	packagePrefix     string
+	requestPartValues []Example
 }
 
 func wrapStructName(prefix, suffix string) string {
@@ -312,6 +315,51 @@ func collectStructsFromDSTNode(node dst.Node, collectOpts *collectStructOptions)
 	return mainStruct, extras
 }
 
+// collectRequestPartDefinitions collects part definitions for a
+func collectRequestPartDefinitions(node dst.Node) []Example {
+	values := []Example{}
+
+	dst.Inspect(node, func(n dst.Node) bool {
+		g, ok := n.(*dst.GenDecl)
+		if !ok {
+			return true
+		}
+		if g.Tok != token.VAR {
+			return true
+		}
+		value := g.Decs.Start.All()
+		if len(value) == 0 {
+			return true
+		}
+
+		for _, s := range g.Specs {
+			value, ok := s.(*dst.ValueSpec)
+			if !ok {
+				continue
+			}
+			if len(value.Names) == 0 {
+				continue
+			}
+			if value.Names[0].Name != "RequestPartDefinitions" {
+				return true
+			}
+			lit, ok := value.Values[0].(*dst.CompositeLit)
+			if !ok {
+				continue
+			}
+			for _, elt := range lit.Elts {
+				expr := elt.(*dst.KeyValueExpr)
+				values = append(values, Example{
+					Name:  strings.Trim(expr.Key.(*dst.BasicLit).Value, "\""),
+					Value: strings.Trim(expr.Value.(*dst.BasicLit).Value, "\""),
+				})
+			}
+		}
+		return true
+	})
+	return values
+}
+
 // parseStructuresFromDSTSpec parses a structure from a DST specification
 // while also handling all its nested structures, etc returning a list
 // of all collected structures in the end.
@@ -340,13 +388,19 @@ func parseStructuresFromDSTSpec(node, original dst.Node, spec dst.Spec, collectO
 		return nil, nil
 	}
 
+	var partDefs []Example
+	if gotStructName == "Request" || strings.HasSuffix(gotStructName, ".Request") {
+		partDefs = collectRequestPartDefinitions(original)
+	}
+
 	s := &structType{
-		name:          gotStructName,
-		node:          x,
-		original:      original,
-		text:          parseComment([]byte(uncommentDecorationNode(node))),
-		pkg:           collectOpts.pkg,
-		packagePrefix: collectOpts.packagePrefix,
+		name:              gotStructName,
+		node:              x,
+		original:          original,
+		text:              parseComment([]byte(uncommentDecorationNode(node))),
+		pkg:               collectOpts.pkg,
+		packagePrefix:     collectOpts.packagePrefix,
+		requestPartValues: partDefs,
 	}
 	// Collect all the fields of the structure. The
 	fields, structures := collectFields(s, collectOpts)
@@ -703,6 +757,16 @@ func init() {
 		{
 			TypeName: "{{ $value.Struct.GetName }}",
 			FieldName: "{{ $value.FieldName }}",
+		},
+	{{ end -}}
+	}
+	{{ end -}}
+	{{ if $struct.PartValues -}}
+	{{ $docVar }}.PartDefinitions = []encoder.KeyValue{
+	{{ range $value := $struct.PartValues -}}
+		{
+			Key: "{{ $value.Name }}",
+			Value: "{{ $value.Value }}",
 		},
 	{{ end -}}
 	}
