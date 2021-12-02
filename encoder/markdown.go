@@ -47,6 +47,14 @@ Appears in:
 {{- end -}}
 {{ end }}
 
+{{ if $struct.PartDefinitions -}}
+Part Definitions: 
+
+{{ range $value := $struct.PartDefinitions }}
+- <code>{{ $value.Key }}</code> - {{ $value.Value }}
+{{- end -}}
+{{ end }}
+
 {{ if $struct.Fields -}}
 
 <hr />
@@ -68,6 +76,15 @@ Valid values:
   - <code>{{ $value }}</code>
 {{ end -}}
 {{ end -}}
+
+{{ if $field.EnumFields }}
+Enum Values:
+
+{{ range $value := $field.EnumFields }}
+  - <code>{{ $value }}</code>
+{{ end -}}
+{{ end -}}
+
 
 {{- if $field.Note }}
 > {{ $field.Note }}

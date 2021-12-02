@@ -42,6 +42,14 @@ type Doc struct {
 	Note string
 	// AppearsIn describes back references for the type.
 	AppearsIn []Appearance
+
+	EnumFields      []string
+	PartDefinitions []KeyValue
+}
+
+type KeyValue struct {
+	Key   string
+	Value string
 }
 
 // AddExample adds a new example snippet to the doc.

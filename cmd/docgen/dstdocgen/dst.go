@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"go/token"
 	"log"
 	"os"
 	"path"
@@ -46,9 +47,10 @@ type Struct struct {
 	name          string
 	packagePrefix string
 
-	Text      *Text
-	Fields    []*Field
-	AppearsIn []Appearance
+	Text       *Text
+	Fields     []*Field
+	AppearsIn  []Appearance
+	PartValues []Example
 }
 
 // GetName returns the name of the struct. If a package name is provided, it
@@ -84,6 +86,7 @@ type Field struct {
 	Note    string
 
 	embeddedStruct string
+	EnumFields     []string
 }
 
 type Text struct {
@@ -120,7 +123,6 @@ func process() error {
 		structures = append(structures, main)
 		structures = append(structures, extra...)
 	}
-
 	if len(structures) == 0 {
 		log.Fatalf("failed to find types that could be documented in %s", *inputPath)
 	}
@@ -143,6 +145,7 @@ func process() error {
 			packagePrefix: s.packagePrefix,
 			Text:          s.text,
 			Fields:        s.fields,
+			PartValues:    s.requestPartValues,
 		}
 
 		for _, field := range s.fields {
@@ -200,12 +203,14 @@ type collectStructOptions struct {
 }
 
 type structType struct {
-	node          *dst.StructType
-	pkg           *decorator.Package
-	name          string
-	text          *Text
-	fields        []*Field
-	packagePrefix string
+	node              *dst.StructType
+	original          dst.Node
+	pkg               *decorator.Package
+	name              string
+	text              *Text
+	fields            []*Field
+	packagePrefix     string
+	requestPartValues []Example
 }
 
 func wrapStructName(prefix, suffix string) string {
@@ -240,6 +245,48 @@ func collectStructsWithOpts(collectOpts *collectStructOptions) (*structType, []*
 	return mainStruct, extras
 }
 
+// collectPartEnumInformation collects enum information for a type from node
+func collectPartEnumInformation(node dst.Node, typeName string) []string {
+	if index := strings.LastIndex(typeName, "."); index != -1 {
+		typeName = typeName[index+1:]
+	}
+	fieldName := strings.Join([]string{"name", typeName}, ":")
+
+	var values []string
+	dst.Inspect(node, func(n dst.Node) bool {
+		g, ok := n.(*dst.GenDecl)
+		if !ok {
+			return true
+		}
+		if g.Tok != token.CONST {
+			return true
+		}
+		value := g.Decs.Start.All()
+		if len(value) == 0 {
+			return true
+		}
+		if strings.TrimPrefix(value[len(value)-1], "// ") != fieldName {
+			return true
+		}
+		for _, s := range g.Specs {
+			value, ok := s.(*dst.ValueSpec)
+			if !ok {
+				continue
+			}
+			if len(value.Names) == 0 {
+				continue
+			}
+			if value.Names[0].Name == "limit" {
+				continue
+			}
+			valueName := strings.TrimPrefix(value.Decs.Start.All()[len(value.Decs.Start.All())-1], "// name:")
+			values = append(values, valueName)
+		}
+		return true
+	})
+	return values
+}
+
 //  collectStructsFromDSTNode is a wrapper around parseStructuresFromDSTSpec
 func collectStructsFromDSTNode(node dst.Node, collectOpts *collectStructOptions) (*structType, []*structType) {
 	var mainStruct *structType
@@ -252,7 +299,7 @@ func collectStructsFromDSTNode(node dst.Node, collectOpts *collectStructOptions)
 		}
 
 		for _, spec := range g.Specs {
-			parsed, extra := parseStructuresFromDSTSpec(n, spec, collectOpts)
+			parsed, extra := parseStructuresFromDSTSpec(n, node, spec, collectOpts)
 			if parsed != nil {
 				if mainStruct == nil {
 					mainStruct = parsed
@@ -268,10 +315,55 @@ func collectStructsFromDSTNode(node dst.Node, collectOpts *collectStructOptions)
 	return mainStruct, extras
 }
 
+// collectRequestPartDefinitions collects part definitions for a
+func collectRequestPartDefinitions(node dst.Node) []Example {
+	values := []Example{}
+
+	dst.Inspect(node, func(n dst.Node) bool {
+		g, ok := n.(*dst.GenDecl)
+		if !ok {
+			return true
+		}
+		if g.Tok != token.VAR {
+			return true
+		}
+		value := g.Decs.Start.All()
+		if len(value) == 0 {
+			return true
+		}
+
+		for _, s := range g.Specs {
+			value, ok := s.(*dst.ValueSpec)
+			if !ok {
+				continue
+			}
+			if len(value.Names) == 0 {
+				continue
+			}
+			if value.Names[0].Name != "RequestPartDefinitions" {
+				return true
+			}
+			lit, ok := value.Values[0].(*dst.CompositeLit)
+			if !ok {
+				continue
+			}
+			for _, elt := range lit.Elts {
+				expr := elt.(*dst.KeyValueExpr)
+				values = append(values, Example{
+					Name:  strings.Trim(expr.Key.(*dst.BasicLit).Value, "\""),
+					Value: strings.Trim(expr.Value.(*dst.BasicLit).Value, "\""),
+				})
+			}
+		}
+		return true
+	})
+	return values
+}
+
 // parseStructuresFromDSTSpec parses a structure from a DST specification
 // while also handling all its nested structures, etc returning a list
 // of all collected structures in the end.
-func parseStructuresFromDSTSpec(node dst.Node, spec dst.Spec, collectOpts *collectStructOptions) (*structType, []*structType) {
+func parseStructuresFromDSTSpec(node, original dst.Node, spec dst.Spec, collectOpts *collectStructOptions) (*structType, []*structType) {
 	t, ok := spec.(*dst.TypeSpec)
 	if !ok {
 		return nil, nil
@@ -296,12 +388,19 @@ func parseStructuresFromDSTSpec(node dst.Node, spec dst.Spec, collectOpts *colle
 		return nil, nil
 	}
 
+	var partDefs []Example
+	if gotStructName == "Request" || strings.HasSuffix(gotStructName, ".Request") {
+		partDefs = collectRequestPartDefinitions(original)
+	}
+
 	s := &structType{
-		name:          gotStructName,
-		node:          x,
-		text:          parseComment([]byte(uncommentDecorationNode(node))),
-		pkg:           collectOpts.pkg,
-		packagePrefix: collectOpts.packagePrefix,
+		name:              gotStructName,
+		node:              x,
+		original:          original,
+		text:              parseComment([]byte(uncommentDecorationNode(node))),
+		pkg:               collectOpts.pkg,
+		packagePrefix:     collectOpts.packagePrefix,
+		requestPartValues: partDefs,
 	}
 	// Collect all the fields of the structure. The
 	fields, structures := collectFields(s, collectOpts)
@@ -324,19 +423,33 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 			continue
 		}
 		tag := reflect.StructTag(strings.Trim(f.Tag.Value, "`"))
-		yamlTags := tag.Get("yaml")
-		yamlTag := strings.Split(yamlTags, ",")[0]
 
-		if (yamlTag == "" || yamlTag == "-") && strings.Count(yamlTags, ",") < 1 {
-			continue
-		}
-		yamlTag = strings.ToLower(yamlTag)
+		var enumFields []string
 
 		documentation := uncommentDecorationNode(f)
-		if documentation == "" {
-			log.Printf("field %q is missing a documentation", f.Names[0].Name)
-			continue
+		mapping := tag.Get("mapping")
+
+		yamlTags := tag.Get("yaml")
+		yamlTag := strings.Split(yamlTags, ",")[0]
+		if mapping == "" {
+			if (yamlTag == "" || yamlTag == "-") && strings.Count(yamlTags, ",") < 1 {
+				continue
+			}
+
+			yamlTag = strings.ToLower(yamlTag)
+
+			if documentation == "" {
+				log.Printf("field %q is missing a documentation", f.Type)
+				continue
+			}
+		} else {
+			ident, ok := f.Type.(*dst.Ident)
+			if !ok {
+				continue
+			}
+			enumFields = collectPartEnumInformation(s.original, ident.Name)
 		}
+
 		if strings.Contains(documentation, "docgen:nodoc") {
 			continue
 		}
@@ -363,7 +476,7 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 				})
 			} else if ident.Obj != nil {
 				spec := ident.Obj.Decl.(*dst.TypeSpec)
-				structure, extra = parseStructuresFromDSTSpec(spec, spec, &collectStructOptions{
+				structure, extra = parseStructuresFromDSTSpec(spec, spec, spec, &collectStructOptions{
 					pkg:           collectOpts.pkg,
 					structName:    ident.Name,
 					packagePrefix: collectOpts.packagePrefix,
@@ -385,17 +498,21 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 			continue
 		}
 		fieldType := formatFieldType(f.Type, s.packagePrefix, false)
+		if name == "" {
+			name = fieldType
+		}
 		fieldTypeRef := getFieldType(f.Type, s.packagePrefix, false)
 
 		// Collect any unresolved reference to a remote object.
 		collectUnresolvedExternalStructs(f.Type, &foundStructures, collectOpts)
 
 		field := &Field{
-			Name:    name,
-			Tag:     yamlTag,
-			Type:    fieldType,
-			TypeRef: fieldTypeRef,
-			Text:    parseComment([]byte(documentation)),
+			Name:       name,
+			Tag:        yamlTag,
+			Type:       fieldType,
+			TypeRef:    fieldTypeRef,
+			Text:       parseComment([]byte(documentation)),
+			EnumFields: enumFields,
 		}
 		fields = append(fields, field)
 	}
@@ -433,15 +550,16 @@ func collectUnresolvedExternalStructs(p interface{}, results *[]*structType, col
 			}
 			uniqueStructures[structName] = struct{}{}
 
-			main, extra := parseStructuresFromDSTSpec(spec, spec, &collectStructOptions{
+			main, extra := parseStructuresFromDSTSpec(spec, spec, spec, &collectStructOptions{
 				pkg:           collectOpts.pkg,
 				structName:    t.Name,
 				packagePrefix: collectOpts.packagePrefix,
 			})
-			*results = append(*results, main)
+			if main != nil {
+				*results = append(*results, main)
+			}
 			*results = append(*results, extra...)
-		}
-		if t.Path != "" {
+		} else if t.Path != "" {
 			prefixSmallName := wrapStructName(path.Base(t.Path), t.Name)
 			if _, ok := uniqueStructures[prefixSmallName]; ok {
 				return
@@ -458,18 +576,34 @@ func collectUnresolvedExternalStructs(p interface{}, results *[]*structType, col
 				log.Printf("[debug] [ref] no package found for struct %s: %s\n", collectOpts.structName, t.Path)
 				return
 			}
+
 			main, extra := collectStructsWithOpts(&collectStructOptions{
 				pkg:           structPackage,
 				structName:    t.Name,
 				packagePrefix: path.Base(t.Path),
 			})
-			*results = append(*results, main)
+			if main != nil {
+				*results = append(*results, main)
+			}
+			*results = append(*results, extra...)
+		} else {
+			if _, ok := uniqueStructures[t.Name]; ok {
+				return
+			}
+			uniqueStructures[t.Name] = struct{}{}
+
+			main, extra := collectStructsWithOpts(&collectStructOptions{
+				pkg:        collectOpts.pkg,
+				structName: t.Name,
+			})
+			if main != nil {
+				*results = append(*results, main)
+			}
 			*results = append(*results, extra...)
 		}
 	case *dst.ArrayType:
 		collectUnresolvedExternalStructs(t.Elt, results, collectOpts)
 	case *dst.StructType:
-		//		return "struct"
 	case *dst.StarExpr:
 		collectUnresolvedExternalStructs(t.X, results, collectOpts)
 	case *dst.SelectorExpr:
@@ -627,6 +761,16 @@ func init() {
 	{{ end -}}
 	}
 	{{ end -}}
+	{{ if $struct.PartValues -}}
+	{{ $docVar }}.PartDefinitions = []encoder.KeyValue{
+	{{ range $value := $struct.PartValues -}}
+		{
+			Key: "{{ $value.Name }}",
+			Value: "{{ $value.Value }}",
+		},
+	{{ end -}}
+	}
+	{{ end -}}
 	{{ $docVar }}.Fields = make([]encoder.Doc,{{ len $struct.Fields }})
 	{{ range $index, $field := $struct.Fields -}}
 	{{ $docVar }}.Fields[{{ $index }}].Name = "{{ $field.Tag }}"
@@ -634,6 +778,13 @@ func init() {
 	{{ $docVar }}.Fields[{{ $index }}].Note = "{{ $field.Note }}"
 	{{ $docVar }}.Fields[{{ $index }}].Description = "{{ $field.Text.Description }}"
 	{{ $docVar }}.Fields[{{ $index }}].Comments[encoder.LineComment] = "{{ $field.Text.Comment }}"
+	{{ if $field.EnumFields -}}
+	{{ $docVar }}.Fields[{{ $index }}].EnumFields = []string{
+	{{ range $value := $field.EnumFields -}}
+		"{{ $value }}",
+	{{ end -}}
+	}
+	{{ end -}}
 	{{ range $example := $field.Text.Examples }}
 	{{ if $example.Value }}
 	{{ $docVar }}.Fields[{{ $index }}].AddExample("{{ $example.Name }}", {{ $example.Value }})
