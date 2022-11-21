@@ -85,8 +85,8 @@ type Field struct {
 	Tag     string
 	Note    string
 
-	embeddedStruct string
-	EnumFields     []string
+	// embeddedStruct string
+	EnumFields []string
 }
 
 type Text struct {
@@ -186,9 +186,16 @@ func loadRootPackage() ([]*decorator.Package, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "could not get absolute path")
 	}
+
+	//  packages.LoadAllSyntax deprecated
+	// which in turn corresponds to below expression
+	loadAllSyntax := packages.NeedDeps | packages.NeedSyntax | packages.NeedTypesInfo |
+		packages.NeedTypesSizes | packages.NeedTypes | packages.NeedImports | packages.NeedName |
+		packages.NeedFiles | packages.NeedCompiledGoFiles
+
 	pkgs, err := decorator.Load(&packages.Config{
 		Dir:  abs,
-		Mode: packages.LoadAllSyntax,
+		Mode: loadAllSyntax,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "could not load package")
@@ -287,7 +294,7 @@ func collectPartEnumInformation(node dst.Node, typeName string) []string {
 	return values
 }
 
-//  collectStructsFromDSTNode is a wrapper around parseStructuresFromDSTSpec
+// collectStructsFromDSTNode is a wrapper around parseStructuresFromDSTSpec
 func collectStructsFromDSTNode(node dst.Node, collectOpts *collectStructOptions) (*structType, []*structType) {
 	var mainStruct *structType
 	var extras []*structType
@@ -485,9 +492,8 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 			// Append all the fields of embedded structure to the
 			// parent structure and add any additional found structures
 			// to the finalStructures array.
-			for _, field := range structure.fields {
-				fields = append(fields, field)
-			}
+
+			fields = append(fields, structure.fields...)
 			foundStructures = append(foundStructures, extra...)
 			continue
 		}
@@ -531,8 +537,8 @@ var uniqueStructures = make(map[string]struct{})
 // It also handles deduplication by having a uniqueStructures map.
 func collectUnresolvedExternalStructs(p interface{}, results *[]*structType, collectOpts *collectStructOptions) {
 	if m, ok := p.(*dst.MapType); ok {
-		collectUnresolvedExternalStructs(m.Key.(dst.Expr), results, collectOpts)
-		collectUnresolvedExternalStructs(m.Value.(dst.Expr), results, collectOpts)
+		collectUnresolvedExternalStructs(m.Key, results, collectOpts)
+		collectUnresolvedExternalStructs(m.Value, results, collectOpts)
 		return
 	}
 

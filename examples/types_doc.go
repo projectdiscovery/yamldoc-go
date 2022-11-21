@@ -85,11 +85,11 @@ func init() {
 	InternalOptionsDoc.Fields[1].AddExample("SchedulingWorkers Example", 10)
 }
 
-func (_ Job) Doc() *encoder.Doc {
+func (Job) Doc() *encoder.Doc {
 	return &JobDoc
 }
 
-func (_ InternalOptions) Doc() *encoder.Doc {
+func (InternalOptions) Doc() *encoder.Doc {
 	return &InternalOptionsDoc
 }
 
