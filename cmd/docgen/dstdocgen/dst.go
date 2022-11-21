@@ -78,14 +78,12 @@ type Example struct {
 }
 
 type Field struct {
-	Name    string
-	Type    string
-	TypeRef string
-	Text    *Text
-	Tag     string
-	Note    string
-
-	// embeddedStruct string
+	Name       string
+	Type       string
+	TypeRef    string
+	Text       *Text
+	Tag        string
+	Note       string
 	EnumFields []string
 }
 
@@ -187,7 +185,7 @@ func loadRootPackage() ([]*decorator.Package, error) {
 		return nil, errors.Wrap(err, "could not get absolute path")
 	}
 
-	//  packages.LoadAllSyntax deprecated
+	// packages.LoadAllSyntax deprecated
 	// which in turn corresponds to below expression
 	loadAllSyntax := packages.NeedDeps | packages.NeedSyntax | packages.NeedTypesInfo |
 		packages.NeedTypesSizes | packages.NeedTypes | packages.NeedImports | packages.NeedName |

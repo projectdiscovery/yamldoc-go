@@ -130,8 +130,6 @@ type Field struct {
 	Text    *Text
 	Tag     string
 	Note    string
-
-	// embeddedStruct string
 }
 
 type Text struct {
