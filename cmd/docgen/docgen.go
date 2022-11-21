@@ -130,8 +130,6 @@ type Field struct {
 	Text    *Text
 	Tag     string
 	Note    string
-
-	embeddedStruct string
 }
 
 type Text struct {
@@ -335,9 +333,7 @@ func collectFields(s *structType) (fields []*Field) {
 			log.Printf("got embedded struct: %+v\n", structData)
 
 			embeddedFields := collectFields(&structType{node: structData})
-			for _, field := range embeddedFields {
-				fields = append(fields, field)
-			}
+			fields = append(fields, embeddedFields...)
 			continue
 		}
 		name := f.Names[0].Name
@@ -389,6 +385,11 @@ func render(doc *Doc, dest string) {
 	}
 
 	out, err := out(dest)
+
+	if err != nil {
+		panic(err)
+	}
+
 	defer out.Close()
 	_, err = out.Write(formatted)
 
