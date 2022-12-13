@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/dave/dst v0.27.2
 	github.com/pkg/errors v0.9.1
-	github.com/segmentio/ksuid v1.0.3
+	github.com/segmentio/ksuid v1.0.4
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/tools v0.1.12
 	gopkg.in/yaml.v2 v2.4.0
