@@ -1,4 +1,4 @@
-name: 🔖 Release Tag
+name: 🔖 Auto Release Action
 
 on:
   workflow_dispatch:
