@@ -1,0 +1,23 @@
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+- main: cmd/docgen/dstdocgen/dst.go
+  binary: dstdocgen
+  id: dstdocgen
+
+  env:
+  - CGO_ENABLED=0
+
+  goos: [linux]
+  goarch: [amd64]
+
+archives:
+
+- format: zip
+  id: dstdocgen
+  name_template: "{{ .Binary }}"
+
+checksum:
+  algorithm: sha256
