@@ -118,7 +118,9 @@ func process() error {
 			pkg:        pkg,
 			structName: *structure,
 		})
-		structures = append(structures, main)
+		if main != nil {
+			structures = append(structures, main)
+		}
 		structures = append(structures, extra...)
 	}
 	if len(structures) == 0 {
@@ -424,7 +426,7 @@ func collectFields(s *structType, collectOpts *collectStructOptions) (fields []*
 	var foundStructures []*structType
 
 	for _, f := range s.node.Fields.List {
-		if f.Tag == nil && len(f.Names) > 0 {
+		if f.Tag == nil || len(f.Names) < 1 {
 			continue
 		}
 		tag := reflect.StructTag(strings.Trim(f.Tag.Value, "`"))
