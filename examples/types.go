@@ -59,6 +59,9 @@ type Job struct {
 	//   - name: InternalOptions Example
 	//     value: exampleInternalOptions
 	InternalOptions *InternalOptions `yaml:"internal-options" json:"internal-options"`
+	// docgen:nodoc
+	// you can also skip members that are not part of the yaml file
+	NotConfiguredByYaml string
 }
 
 // InternalOptions contains internal configuration options for scheduler
