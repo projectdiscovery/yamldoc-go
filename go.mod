@@ -10,7 +10,7 @@ require (
 	golang.org/x/tools v0.29.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
-	mvdan.cc/gofumpt v0.4.0
+	mvdan.cc/gofumpt v0.7.0
 )
 
 require (
