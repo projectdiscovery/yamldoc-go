@@ -390,7 +390,9 @@ func render(doc *Doc, dest string) {
 		panic(err)
 	}
 
-	defer out.Close()
+	defer func() {
+		_ = out.Close()
+	}()
 	_, err = out.Write(formatted)
 
 	if err != nil {

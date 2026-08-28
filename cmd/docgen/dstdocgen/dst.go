@@ -844,7 +844,9 @@ func render(doc *Doc, dest string) error {
 	if err != nil {
 		return errors.Wrap(err, "could not create output file")
 	}
-	defer out.Close()
+	defer func() {
+		_ = out.Close()
+	}()
 	_, err = out.Write(formatted)
 	return err
 }

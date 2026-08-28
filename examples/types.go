@@ -1,4 +1,4 @@
-// go:generate docgen types.go types_doc.go Configuration
+//go:generate docgen types.go types_doc.go Configuration
 package main
 
 import (
