@@ -7,5 +7,5 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	os.Stdout.Write(data)
+	_, _ = os.Stdout.Write(data)
 }

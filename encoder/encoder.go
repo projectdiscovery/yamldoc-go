@@ -79,7 +79,7 @@ func isEmpty(value reflect.Value) bool {
 
 	//nolint:exhaustive
 	switch value.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		return value.IsNil()
 	case reflect.Map:
 		return len(value.MapKeys()) == 0
@@ -97,7 +97,7 @@ func isNil(value reflect.Value) bool {
 
 	//nolint:exhaustive
 	switch value.Kind() {
-	case reflect.Ptr, reflect.Map, reflect.Slice:
+	case reflect.Pointer, reflect.Map, reflect.Slice:
 		return value.IsNil()
 	default:
 		return false
@@ -129,7 +129,7 @@ func toYamlNode(in interface{}, flags CommentsFlags) (*yaml.Node, error) {
 	}
 
 	v := reflect.ValueOf(in)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 
