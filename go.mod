@@ -3,11 +3,11 @@ module github.com/projectdiscovery/yamldoc-go
 go 1.26.0
 
 require (
-	github.com/dave/dst v0.27.4
+	github.com/dave/dst v0.28.0
 	github.com/pkg/errors v0.9.1
 	github.com/segmentio/ksuid v1.0.4
 	github.com/stretchr/testify v1.12.1
-	golang.org/x/tools v0.49.0
+	golang.org/x/tools v0.50.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 	mvdan.cc/gofumpt v0.12.0
@@ -15,6 +15,6 @@ require (
 
 require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/mod v0.40.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
 )
