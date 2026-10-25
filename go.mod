@@ -3,7 +3,7 @@ module github.com/projectdiscovery/yamldoc-go
 go 1.26.0
 
 require (
-	github.com/dave/dst v0.27.4
+	github.com/dave/dst v0.28.0
 	github.com/pkg/errors v0.9.1
 	github.com/segmentio/ksuid v1.0.4
 	github.com/stretchr/testify v1.12.1
